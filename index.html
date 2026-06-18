@@ -13,6 +13,20 @@
         body {
             font-family: 'Suite', sans-serif;
         }
+        /* 스크롤바 디자인 커스텀 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
@@ -48,8 +62,9 @@
                     <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
                         <i class="fa-solid fa-users text-amber-500"></i> 참여자 수 (명)
                     </label>
-                    <input type="number" id="player-count" min="1" max="20" value="3" required
+                    <input type="number" id="player-count" min="1" max="100" value="3" required
                         class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition">
+                    <p class="text-[11px] text-slate-500 mt-1">* 최대 100명까지 한 번에 입력하여 예측을 비교할 수 있습니다.</p>
                 </div>
 
                 <!-- 팀 설정 -->
@@ -239,19 +254,21 @@
 
             <!-- 전체 순위 목록 테이블 -->
             <div class="bg-slate-950 rounded-2xl overflow-hidden border border-slate-700 mb-8">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
-                            <th class="py-4 px-6 text-center font-bold w-16">순위</th>
-                            <th class="py-4 px-4 font-bold">이름</th>
-                            <th class="py-4 px-4 text-center font-bold">예측 스코어</th>
-                            <th class="py-4 px-4 text-right font-bold pr-6">오차 합산</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaderboard-rows" class="divide-y divide-slate-800">
-                        <!-- 동적 랭킹 렌더링 -->
-                    </tbody>
-                </table>
+                <div class="max-h-[50vh] overflow-y-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-slate-900 z-10 shadow-sm">
+                            <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
+                                <th class="py-4 px-6 text-center font-bold w-16">순위</th>
+                                <th class="py-4 px-4 font-bold">이름</th>
+                                <th class="py-4 px-4 text-center font-bold">예측 스코어</th>
+                                <th class="py-4 px-4 text-right font-bold pr-6">오차 합산</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-rows" class="divide-y divide-slate-800">
+                            <!-- 동적 랭킹 렌더링 -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- 관리 버튼들 -->
@@ -352,10 +369,17 @@
         function setupGame(e) {
             e.preventDefault();
 
-            config.playerCount = parseInt(document.getElementById('player-count').value);
+            const countInput = document.getElementById('player-count');
+            config.playerCount = parseInt(countInput.value);
             config.teamA = document.getElementById('team-a').value.trim();
             config.teamB = document.getElementById('team-b').value.trim();
             config.sports = document.querySelector('input[name="sports"]:checked').value;
+
+            // 추가적인 입력 제한 유효성 검사
+            if (config.playerCount < 1 || config.playerCount > 100) {
+                showAlert('입력 오류', '참여자 수는 1명에서 100명 사이여야 합니다.', 'error');
+                return;
+            }
 
             if (config.teamA === config.teamB) {
                 showAlert('설정 오류', '서로 다른 두 팀의 이름을 입력해 주세요.', 'error');
@@ -460,7 +484,6 @@
             document.getElementById('board-score-b').innerText = actualScore.b;
 
             // 순위 계산 알고리즘 (오차 합산이 적을수록 더 높은 순위)
-            // 오차 = |실제 팀A점수 - 예측 팀A점수| + |실제 팀B점수 - 예측 팀B점수|
             const computedResults = predictions.map(p => {
                 const diffA = Math.abs(p.scoreA - actualScore.a);
                 const diffB = Math.abs(p.scoreB - actualScore.b);
@@ -472,10 +495,10 @@
                 };
             });
 
-            // 오차 합산 오름차순으로 정렬 (같으면 공동 순위 지원)
+            // 오차 합산 오름차순으로 정렬
             computedResults.sort((x, y) => x.diff - y.diff);
 
-            // 순위 부여
+            // 순위 부여 (동점 처리 포함)
             let currentRank = 1;
             for (let i = 0; i < computedResults.length; i++) {
                 if (i > 0 && computedResults[i].diff > computedResults[i - 1].diff) {
@@ -484,7 +507,7 @@
                 computedResults[i].rank = currentRank;
             }
 
-            // 시상대 처리 (참여자가 최소 2명 이상일 때 보여주면 더 흥미진진함)
+            // 시상대 처리 (참여자가 최소 2명 이상일 때 보여줌)
             renderPodium(computedResults);
 
             // 최종 리더보드 테이블 렌더링
@@ -580,16 +603,14 @@
             });
         }
 
-        // 같은 설정으로 다시 하기 (스코어 예측값은 비움)
+        // 같은 설정으로 다시 하기
         function restartWithSameSettings() {
-            // 기존 스코어 예측 리셋
             predictions = predictions.map(p => ({
                 ...p,
                 scoreA: 0,
                 scoreB: 0
             }));
 
-            // 스코어 예측 입력 단계로 복귀
             renderPredictorsForm();
             switchStep(4, 2);
         }
